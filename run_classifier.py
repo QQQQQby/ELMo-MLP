@@ -20,11 +20,8 @@ class ELMo:
         self.data_dev = self._read_xml(os.path.join(args.dataset_path, 'answers_dev.xml'))
         self.data_test = self._read_xml(os.path.join(args.dataset_path, 'answers_test.xml'))
 
-        random.shuffle(self.data_train)  # 打乱训练数据
-
-        self.labels_2_one_hot(self.data_train)
-        self.labels_2_one_hot(self.data_dev)
-        self.labels_2_one_hot(self.data_test)
+        for data in [self.data_train, self.data_dev, self.data_test]:
+            self.labels_2_one_hot(data)
 
         print('Number of training data:', len(self.data_train))
         print('Number of data for evaluation:', len(self.data_dev))
@@ -85,39 +82,46 @@ class ELMo:
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             for i in range(self.args.num_epochs):
-                print('Training epoch %d' % i)
-
                 # 训练
-                for start in range(0, len(self.data_train), self.args.batch_size):
-                    num_iterations += 1
-                    end = min(start + self.args.batch_size, len(self.data_train))
-                    print('batch[%d:%d]' % (start, end))
-                    sess.run(self.op, feed_dict={self.text_input: [batch[0] for batch in self.data_train[start:end]],
-                                                 self.label_input: [batch[1] for batch in self.data_train[start:end]]})
+                if self.args.do_train:
+                    print('-' * 20 + 'Training epoch %d' % i + '-' * 20)
+                    random.shuffle(self.data_train)
+                    for start in range(0, len(self.data_train), self.args.batch_size):
+                        num_iterations += 1
+                        end = min(start + self.args.batch_size, len(self.data_train))
+                        _, loss = sess.run([self.op, self.loss],
+                                           feed_dict={
+                                               self.text_input: [batch[0] for batch in self.data_train[start:end]],
+                                               self.label_input: [batch[1] for batch in self.data_train[start:end]]})
+                        print('batch[%d:%d]: %f' % (start, end, loss))
 
                 # 计算dev集准确率
-                print('-' * 20 + 'evaluating current epoch' + '-' * 20)
-                c = 0
-                for start in range(0, len(self.data_dev), self.args.batch_size):
-                    end = min(start + self.args.batch_size, len(self.data_dev))
-                    c += sum(sess.run(self.correct,
-                                      feed_dict={self.text_input: [batch[0] for batch in self.data_dev[start:end]],
-                                                 self.label_input: [batch[1] for batch in self.data_dev[start:end]]}))
-                acc = c / len(self.data_dev)
-                eval_result += str(num_iterations) + '\t' + str(acc) + '\n'
-                print('Accuracy:' + str(acc))
+                if self.args.do_eval:
+                    print('-' * 20 + 'evaluating current epoch' + '-' * 20)
+                    c = 0
+                    for start in range(0, len(self.data_dev), self.args.batch_size):
+                        end = min(start + self.args.batch_size, len(self.data_dev))
+                        c += sum(sess.run(self.correct,
+                                          feed_dict={
+                                              self.text_input: [batch[0] for batch in self.data_dev[start:end]],
+                                              self.label_input: [batch[1] for batch in self.data_dev[start:end]]}))
+                    acc = c / len(self.data_dev)
+                    eval_result += str(num_iterations) + '\t' + str(acc) + '\n'
+                    print('Accuracy:' + str(acc))
 
                 # 计算test集中每一条数据对label的选择概率
-                print('-' * 20 + 'testing current epoch' + '-' * 20)
-                test_result = ''
-                for start in range(0, len(self.data_test), self.args.batch_size):
-                    end = min(start + self.args.batch_size, len(self.data_test))
-                    t = sess.run(self.prob,
-                                 feed_dict={self.text_input: [batch[0] for batch in self.data_test[start:end]],
-                                            self.label_input: [batch[1] for batch in self.data_test[start:end]]})
-                    test_result += '\n'.join(['\t'.join([str(j) for j in i]) for i in t]) + '\n'
-                with open(os.path.join(self.args.output_path, 'test_' + str(num_iterations) + '.tsv'), 'w') as f:
-                    f.write(test_result)
+                if self.args.do_test:
+                    print('-' * 20 + 'testing current epoch' + '-' * 20)
+                    test_result = ''
+                    for start in range(0, len(self.data_test), self.args.batch_size):
+                        end = min(start + self.args.batch_size, len(self.data_test))
+                        t = sess.run(self.prob,
+                                     feed_dict={
+                                         self.text_input: [batch[0] for batch in self.data_test[start:end]],
+                                         self.label_input: [batch[1] for batch in self.data_test[start:end]]})
+                        test_result += '\n'.join(['\t'.join([str(j) for j in i]) for i in t]) + '\n'
+                    with open(os.path.join(self.args.output_path, 'test_' + str(num_iterations) + '.tsv'), 'w') as f:
+                        f.write(test_result)
                 print()
 
         with open(os.path.join(self.args.output_path, 'eval_' + str(num_iterations) + '.txt'), 'w') as f:
@@ -195,6 +199,12 @@ def parse_args():  # 定义参数
                         help='Labels of texts.')
     parser.add_argument('--use_gpu', type=bool, default=True,
                         help='whether to use gpu.')
+    parser.add_argument('--do_train', type=bool, default=True,
+                        help='whether to train the model.')
+    parser.add_argument('--do_eval', type=bool, default=True,
+                        help='whether to do the evaluation.')
+    parser.add_argument('--do_test', type=bool, default=True,
+                        help='whether to predict test data.')
     return parser.parse_args()
 
 
