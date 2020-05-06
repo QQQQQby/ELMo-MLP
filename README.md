@@ -40,6 +40,9 @@ optional arguments:
                         Data path.
   --labels LABELS       Labels of texts.
   --use_gpu USE_GPU     whether to use gpu.
+  --do_train DO_TRAIN   whether to train the model.
+  --do_eval DO_EVAL     whether to do the evaluation.
+  --do_test DO_TEST     whether to predict test data.
 ```
 
 Train and evaluate:
