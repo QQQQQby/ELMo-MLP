@@ -16,9 +16,9 @@ class ELMo:
 
         self.label_size = len(args.labels)
         # 预处理数据
-        self.data_train = self._read_xml(os.path.join(args.dataset_path, 'answers_train.xml'))
-        self.data_dev = self._read_xml(os.path.join(args.dataset_path, 'answers_dev.xml'))
-        self.data_test = self._read_xml(os.path.join(args.dataset_path, 'answers_test.xml'))
+        self.data_train = self.read_data_from_xml(os.path.join(args.dataset_path, 'answers_train.xml'))
+        self.data_dev = self.read_data_from_xml(os.path.join(args.dataset_path, 'answers_dev.xml'))
+        self.data_test = self.read_data_from_xml(os.path.join(args.dataset_path, 'answers_test.xml'))
 
         for data in [self.data_train, self.data_dev, self.data_test]:
             self.labels_2_one_hot(data)
@@ -55,10 +55,10 @@ class ELMo:
             tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES,
                                  tf.contrib.layers.l2_regularizer(self.args.lamb)(self.W))  # 使用L2正则化，防止过拟合
 
-            self.true_label = tf.argmax(self.label_input, 1)
             self.prob = tf.nn.softmax(self.Z)
-            self.pred = tf.argmax(self.prob, 1)
-            self.correct = tf.equal(self.true_label, self.pred)
+            self.pred_label = tf.argmax(self.prob, 1)
+            self.true_label = tf.argmax(self.label_input, 1)
+            self.correct = tf.equal(self.true_label, self.pred_label)
             self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
                 logits=self.Z, labels=self.label_input)) + tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             self.op = tf.train.AdamOptimizer(learning_rate=self.args.learning_rate).minimize(self.loss)
@@ -81,10 +81,10 @@ class ELMo:
         num_iterations = 0
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            for i in range(self.args.num_epochs):
+            for epoch in range(self.args.num_epochs):
                 # 训练
                 if self.args.do_train:
-                    print('-' * 20 + 'Training epoch %d' % i + '-' * 20)
+                    print('-' * 20 + 'Training epoch %d' % epoch + '-' * 20)
                     random.shuffle(self.data_train)
                     for start in range(0, len(self.data_train), self.args.batch_size):
                         num_iterations += 1
@@ -99,15 +99,22 @@ class ELMo:
                 if self.args.do_eval:
                     print('-' * 20 + 'evaluating current epoch' + '-' * 20)
                     c = 0
+                    confusion_matrix = [[0 for j in range(self.label_size)] for i in range(self.label_size)]
                     for start in range(0, len(self.data_dev), self.args.batch_size):
                         end = min(start + self.args.batch_size, len(self.data_dev))
-                        c += sum(sess.run(self.correct,
-                                          feed_dict={
-                                              self.text_input: [batch[0] for batch in self.data_dev[start:end]],
-                                              self.label_input: [batch[1] for batch in self.data_dev[start:end]]}))
+                        correct, pred_label, true_label = sess.run(
+                            [self.correct, self.pred_label, self.true_label],
+                            feed_dict={self.text_input: [batch[0] for batch in self.data_dev[start:end]],
+                                       self.label_input: [batch[1] for batch in self.data_dev[start:end]]})
+                        c += sum(correct)
+                        for i in range(len(true_label)):
+                            confusion_matrix[true_label[i]][pred_label[i]] += 1
                     acc = c / len(self.data_dev)
                     eval_result += str(num_iterations) + '\t' + str(acc) + '\n'
                     print('Accuracy:' + str(acc))
+                    print('Confusion Matrix:')
+                    for i in range(self.label_size):
+                        print(confusion_matrix[i])
 
                 # 计算test集中每一条数据对label的选择概率
                 if self.args.do_test:
@@ -137,8 +144,7 @@ class ELMo:
             data[i][1] = [0 for i in range(self.label_size)]
             data[i][1][k] = 1
 
-    @classmethod
-    def _read_xml(cls, input_file):
+    def read_data_from_xml(self, input_file):
         f = xml.dom.minidom.parse(input_file)
         nodes = f.getElementsByTagName('Thread')
         data = []
@@ -147,12 +153,12 @@ class ELMo:
             question = nodes[i].getElementsByTagName('RelQuestion')[0].getAttribute('RELQ_CATEGORY') + ' # '
             if nodes[i].getElementsByTagName('RelQBody')[0].firstChild:
                 question += (nodes[i].getElementsByTagName('RelQSubject')[0].firstChild.data + ' ## ' +
-                             cls._clean_text(nodes[i].getElementsByTagName('RelQBody')[0].firstChild.data))
+                             self.cleaned_text(nodes[i].getElementsByTagName('RelQBody')[0].firstChild.data))
             else:
-                question += cls._clean_text(nodes[i].getElementsByTagName('RelQSubject')[0].firstChild.data)
+                question += self.cleaned_text(nodes[i].getElementsByTagName('RelQSubject')[0].firstChild.data)
             answers = []
             for answer in nodes[i].getElementsByTagName('RelCText'):
-                answers.append(cls._clean_text(answer.firstChild.data))
+                answers.append(self.cleaned_text(answer.firstChild.data))
             if len(answers) == 0:
                 continue
             labels = []
@@ -162,8 +168,8 @@ class ELMo:
                 data.append([question + " ### " + answers[j], labels[j]])
         return data
 
-    @classmethod
-    def _clean_text(cls, text):  # 清洗数据
+    @staticmethod
+    def cleaned_text(text):  # 清洗数据
         newText = re.sub(r'(https|http)?:\/\/(\w|\.|\/|\?|\=|\&|\%)*\b', '', text, flags=re.MULTILINE)
         newText = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", newText)
         newText = re.sub(r"\'s", " \'s", newText)
@@ -185,9 +191,9 @@ def parse_args():  # 定义参数
     parser = argparse.ArgumentParser(description='Run ELMo with Tensorflow Hub.')
     parser.add_argument('--num_epochs', type=int, default=10,
                         help='Number of epochs.')
-    parser.add_argument('--batch_size', type=int, default=16,
+    parser.add_argument('--batch_size', type=int, default=8,
                         help='Batch size.')
-    parser.add_argument('--learning_rate', type=float, default=1e-2,
+    parser.add_argument('--learning_rate', type=float, default=1e-4,
                         help='Learning rate.')
     parser.add_argument('--lamb', type=float, default=1e-3,
                         help='Regularization coefficient for weights.')

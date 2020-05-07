@@ -1,7 +1,7 @@
 @echo off
 
 set BATCH_SIZE=12
-set LEARNING_RATE=6e-4
+set LEARNING_RATE=5e-4
 set LAMB=0.005
 set NUM_EPOCHS=20
 set DATASET_PATH=./data
