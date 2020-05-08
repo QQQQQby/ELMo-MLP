@@ -109,11 +109,13 @@ class ELMo:
 
                     accuracy = self.get_accuracy(confusion_matrix)
                     precision_list, recall_list = self.get_precision_and_recall_list(confusion_matrix)
+                    f1_score_list = [2 * p * r / (p + r) for p, r in zip(precision_list, recall_list)]
 
                     eval_result += 'Iteration ' + str(num_iterations) + ':\n'
                     eval_result += 'Accuracy: ' + str(accuracy) + '\n'
                     eval_result += 'Precision: ' + str(precision_list) + '\n'
                     eval_result += 'Recall: ' + str(recall_list) + '\n'
+                    eval_result += 'F1 Score: ' + str(f1_score_list) + '\n'
                     eval_result += '\n'
 
                     print('Confusion Matrix:')
@@ -122,6 +124,7 @@ class ELMo:
                     print('Accuracy:', accuracy)
                     print('Precision:', precision_list)
                     print('Recall:', recall_list)
+                    print('F1 Score:', f1_score_list)
 
                 # 计算test集中每一条数据对label的选择概率
                 if self.args.do_test:
