@@ -110,12 +110,16 @@ class ELMo:
                     accuracy = self.get_accuracy(confusion_matrix)
                     precision_list, recall_list = self.get_precision_and_recall_list(confusion_matrix)
                     f1_score_list = [2 * p * r / (p + r) for p, r in zip(precision_list, recall_list)]
+                    f1_macro = sum(f1_score_list) / self.num_labels
+                    f1_weighted = self.get_weighted_f1_score(confusion_matrix, f1_score_list)
 
                     eval_result += 'Iteration ' + str(num_iterations) + ':\n'
                     eval_result += 'Accuracy: ' + str(accuracy) + '\n'
-                    eval_result += 'Precision: ' + str(precision_list) + '\n'
-                    eval_result += 'Recall: ' + str(recall_list) + '\n'
-                    eval_result += 'F1 Score: ' + str(f1_score_list) + '\n'
+                    eval_result += 'Precision for each class: ' + str(precision_list) + '\n'
+                    eval_result += 'Recall for each class: ' + str(recall_list) + '\n'
+                    eval_result += 'F1 Score for each class: ' + str(f1_score_list) + '\n'
+                    eval_result += 'Macro-F1 Score: ' + str(f1_macro) + '\n'
+                    eval_result += 'Weighted-F1 Score: ' + str(f1_weighted) + '\n'
                     eval_result += '\n'
 
                     print('Confusion Matrix:')
@@ -125,6 +129,8 @@ class ELMo:
                     print('Precision:', precision_list)
                     print('Recall:', recall_list)
                     print('F1 Score:', f1_score_list)
+                    print('Macro-F1 Score:', f1_macro)
+                    print('Weighted-F1 Score:', f1_weighted)
 
                 # 计算test集中每一条数据对label的选择概率
                 if self.args.do_test:
@@ -178,6 +184,10 @@ class ELMo:
             except ZeroDivisionError:
                 recall.append(1.0)
         return precision, recall
+
+    def get_weighted_f1_score(self, confusion_matrix, f1_score_list):
+        num_actual = [sum([confusion_matrix[j][i] for j in range(self.num_labels)]) for i in range(self.num_labels)]
+        return sum([f1_score_list[i] * num_actual[i] for i in range(self.num_labels)]) / sum(num_actual)
 
     # 读取数据
     @classmethod
