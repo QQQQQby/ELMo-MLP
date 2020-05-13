@@ -16,9 +16,9 @@ class ELMo:
 
         self.num_labels = len(args.labels)
         # 读取并预处理数据
-        self.data_train = self.read_data_from_xml(os.path.join(args.dataset_path, 'answers_train.xml'))
-        self.data_dev = self.read_data_from_xml(os.path.join(args.dataset_path, 'answers_dev.xml'))
-        self.data_test = self.read_data_from_xml(os.path.join(args.dataset_path, 'answers_test.xml'))
+        self.data_train = self._read_data(os.path.join(args.dataset_path, 'answers_train.txt'))
+        self.data_dev = self._read_data(os.path.join(args.dataset_path, 'answers_dev.txt'))
+        self.data_test = self._read_data(os.path.join(args.dataset_path, 'answers_test.txt'))
 
         for data in [self.data_train, self.data_dev, self.data_test]:
             self.labels_2_one_hot(data)
@@ -36,10 +36,10 @@ class ELMo:
         for i in range(3):
             print(self.data_test[i])
 
-        self.elmo = hub.Module("https://tfhub.dev/google/elmo/3")
         with tf.name_scope('labeled_text'):
             self.label_input = tf.placeholder(tf.int8, [None, self.num_labels], name='labels')
             self.text_input = tf.placeholder(tf.string, [None], name='texts')
+        self.elmo = hub.Module("https://tfhub.dev/google/elmo/3")
         self.embeddings = self.elmo(
             self.text_input,
             signature="default",
@@ -156,31 +156,6 @@ class ELMo:
             data[i][1] = [0 for i in range(self.num_labels)]
             data[i][1][k] = 1
 
-    # 从xml文件中读取数据
-    def read_data_from_xml(self, input_file):
-        f = xml.dom.minidom.parse(input_file)
-        nodes = f.getElementsByTagName('Thread')
-        data = []
-        l = len(nodes)
-        for i in range(l):
-            question = nodes[i].getElementsByTagName('RelQuestion')[0].getAttribute('RELQ_CATEGORY') + ' # '
-            if nodes[i].getElementsByTagName('RelQBody')[0].firstChild:
-                question += (nodes[i].getElementsByTagName('RelQSubject')[0].firstChild.data + ' ## ' +
-                             self.cleaned_text(nodes[i].getElementsByTagName('RelQBody')[0].firstChild.data))
-            else:
-                question += self.cleaned_text(nodes[i].getElementsByTagName('RelQSubject')[0].firstChild.data)
-            answers = []
-            for answer in nodes[i].getElementsByTagName('RelCText'):
-                answers.append(self.cleaned_text(answer.firstChild.data))
-            if len(answers) == 0:
-                continue
-            labels = []
-            for label in nodes[i].getElementsByTagName('RelComment'):
-                labels.append(label.getAttribute('RELC_FACT_LABEL'))
-            for j in range(len(answers)):
-                data.append([question + " ### " + answers[j], labels[j]])
-        return data
-
     # 根据混淆矩阵计算准确率
     def get_accuracy(self, confusion_matrix):
         try:
@@ -204,24 +179,17 @@ class ELMo:
                 recall.append(1.0)
         return precision, recall
 
-    # 清洗数据
-    @staticmethod
-    def cleaned_text(text):
-        newText = re.sub(r'(https|http)?:\/\/(\w|\.|\/|\?|\=|\&|\%)*\b', '', text, flags=re.MULTILINE)
-        newText = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", newText)
-        newText = re.sub(r"\'s", " \'s", newText)
-        newText = re.sub(r"\'ve", " \'ve", newText)
-        newText = re.sub(r"n\'t", " n\'t", newText)
-        newText = re.sub(r"\'re", " \'re", newText)
-        newText = re.sub(r"\'d", " \'d", newText)
-        newText = re.sub(r"\'ll", " \'ll", newText)
-        newText = re.sub(r",", " , ", newText)
-        newText = re.sub(r"!", " ! ", newText)
-        newText = re.sub(r"\(", " \( ", newText)
-        newText = re.sub(r"\)", " \) ", newText)
-        newText = re.sub(r"\?", " \? ", newText)
-        newText = re.sub(r"\s{2,}", " ", newText)
-        return newText
+    # 读取数据
+    @classmethod
+    def _read_data(cls, input_file):
+        with open(input_file, 'r') as f:
+            data = f.read()
+        data = [d.split('\t') for d in data.split('\n')]
+        for i in range(len(data)):
+            data[i][0] += (' ### ' + data[i][1])
+            data[i][1] = data[i][2]
+            del data[i][2]
+        return data
 
 
 # 定义参数
