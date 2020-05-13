@@ -109,9 +109,9 @@ class ELMo:
 
                     accuracy = self.get_accuracy(confusion_matrix)
                     precision_list, recall_list = self.get_precision_and_recall_list(confusion_matrix)
-                    f1_score_list = [2 * p * r / (p + r) for p, r in zip(precision_list, recall_list)]
-                    f1_macro = sum(f1_score_list) / self.num_labels
+                    f1_score_list = self.get_f1_score_list(precision_list, recall_list)
                     f1_weighted = self.get_weighted_f1_score(confusion_matrix, f1_score_list)
+                    f1_macro = sum(f1_score_list) / self.num_labels
 
                     eval_result += 'Iteration ' + str(num_iterations) + ':\n'
                     eval_result += 'Accuracy: ' + str(accuracy) + '\n'
@@ -170,7 +170,17 @@ class ELMo:
             accuracy = 1.0
         return accuracy
 
-    # 根据混淆矩阵计算查准率和查全率，其维度为[label数量]
+    def get_f1_score_list(self, precision_list, recall_list):
+        res = []
+        for p, r in zip(precision_list, recall_list):
+            try:
+                t = 2 * p * r / (p + r)
+            except ZeroDivisionError:
+                t = 0
+            res.append(t)
+        return res
+
+    # 根据混淆矩阵计算查准率和查全率，其维度为[num_labels]
     def get_precision_and_recall_list(self, confusion_matrix):
         precision = []
         recall = []
